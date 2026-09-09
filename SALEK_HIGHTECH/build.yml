@@ -1,0 +1,58 @@
+name: Build SALEK HIGHTECH
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3 + Standalone
+        run: cmake --build build --config Release --parallel
+
+      - name: Show build outputs
+        shell: pwsh
+        run: |
+          Write-Host "=== VST3 ==="
+          Get-ChildItem -Path build -Recurse -Filter *.vst3 | Select-Object FullName
+          Write-Host "=== Standalone ==="
+          Get-ChildItem -Path build -Recurse -Filter *.exe | Where-Object { $_.FullName -notmatch "\\CMakeFiles\\" } | Select-Object FullName
+
+      - name: Package VST3
+        shell: pwsh
+        run: |
+          $vst = Get-ChildItem -Path build -Recurse -Filter *.vst3 | Select-Object -First 1
+          if (-not $vst) { throw "VST3 was not produced." }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path $vst.FullName -DestinationPath artifacts/SALEK-HIGHTECH-VST3-Windows.zip -Force
+
+      - name: Package Standalone
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter "*.exe" |
+            Where-Object { $_.FullName -notmatch "\\CMakeFiles\\" -and $_.Name -notmatch "cmake|ninja" } |
+            Select-Object -First 1
+          if (-not $exe) { throw "Standalone EXE was not produced." }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item $exe.FullName artifacts/SALEK-HIGHTECH-Standalone.exe -Force
+
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SALEK-HIGHTECH-VST3-Windows
+          path: artifacts/SALEK-HIGHTECH-VST3-Windows.zip
+
+      - name: Upload Standalone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SALEK-HIGHTECH-Standalone-Windows
+          path: artifacts/SALEK-HIGHTECH-Standalone.exe
